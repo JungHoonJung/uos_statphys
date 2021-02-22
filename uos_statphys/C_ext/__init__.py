@@ -22,17 +22,10 @@ else:
 
 def set_compiler(c = None, cpp = None):
     global CC, CPC, FLAG
-    if not c:
-        if  os.system(f"{c}") == 0:
-            CC = c
-        else:
-            raise ModuleNotFoundError(f"Cannot find '{c}'.")
-    if not cpp:
-        if os.system(f"{cpp}") == 0:
-            CPC = cpp
-        else:
-            raise ModuleNotFoundError(f"Cannot find '{cpp}'.")
-    
+    if c:
+        CC = c
+    if cpp:
+        CPC = cpp
 
 class C_functions:
     def __init__(self, cdll_path, headers, doc_dict= None):
@@ -65,7 +58,7 @@ class C_functions:
 # c and python interface.
 c_to_py ={
     'int'       : ctypes.c_int,
-    'int&'      : ctypes.c_int,
+    'long'       : ctypes.c_long,
     'float'     : ctypes.c_float,
     'float&'    : ctypes.c_float,
     'double'    : ctypes.c_double,
@@ -74,6 +67,7 @@ c_to_py ={
     'float*'    : np.ctypeslib.ndpointer(dtype=np.float32),
     'char*'     : np.ctypeslib.ndpointer(dtype=np.int8),
     'int*'      : np.ctypeslib.ndpointer(dtype=np.int32),
+    'long*'      : np.ctypeslib.ndpointer(dtype=np.int64),
     'double*'   : np.ctypeslib.ndpointer(dtype=np.float64),
 
     'int**'     : np.ctypeslib.ndpointer(dtype=np.float64, ndim=2),
@@ -317,9 +311,6 @@ def from_C_source(filename, *flags, debug = False, encoding = 'utf8'):
     
     if not debug:
         os.remove(tempname)
-        if platform.system() == "Windows":
-            os.remove(libname+".lib")
-            os.remove(libname+".exp")
 
     #loadLibrary
     

@@ -10,5 +10,5 @@ setup(name='uos_statphys',
 		packages=find_packages(),      
 		include_package_data=True,      # include files in MANIFEST.in
 		python_requires = '>=3',
-		install_requires=['numpy', 'matplotlib','tqdm']
+		install_requires=['numpy', 'matplotlib','tqdm', 'clang']
 	 )

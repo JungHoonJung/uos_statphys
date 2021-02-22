@@ -2,3 +2,4 @@ nbsphinx
 numpy
 matplotlib
 tqdm
+clang
