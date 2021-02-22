@@ -1,0 +1,372 @@
+import platform, os, ctypes, pkg_resources
+import subprocess
+import numpy as np
+
+__all__ = ["from_C_source",'set_compiler']
+
+#global settings
+FLAG = ["-shared"]
+if platform.system() == 'Windows':
+    CC = "clang"
+    CPC = "clang++"
+    outext = "dll"    
+    
+else:
+    CC = "gcc"
+    CPC = "g++"
+    FLAG.append("-fPIC")
+    if platform.system() == 'Linux':
+        outext = "so"
+    else:
+        outext = "dylib"
+
+def set_compiler(c = None, cpp = None):
+    global CC, CPC, FLAG
+    if not c:
+        if  os.system(f"{c}") == 0:
+            CC = c
+        else:
+            raise ModuleNotFoundError(f"Cannot find '{c}'.")
+    if not cpp:
+        if os.system(f"{cpp}") == 0:
+            CPC = cpp
+        else:
+            raise ModuleNotFoundError(f"Cannot find '{cpp}'.")
+    
+
+class C_functions:
+    def __init__(self, cdll_path, headers, doc_dict= None):
+        self._path = cdll_path
+        self._cdll = ctypes.CDLL(cdll_path)
+        self._handle = self._cdll._handle
+        interface_from_header(self._cdll, headers, c_to_py)
+        types = cdll_types(headers)
+        for fname in types:
+            vars(self)[fname] = function_make(self._cdll, fname, *types[fname])
+            if doc_dict is not None:
+                vars(self)[fname].__doc__ = doc_dict[fname]
+
+    def __getattr__(self, name: str):
+        getattr(self._cdll, name)
+    
+    def __del__(self):
+        libname = os.path.splitext(self._path)[0]
+        if platform.system() == 'Windows':
+            
+            #ctypes.windll.FreeLibrary(self._handle)
+            del self._cdll
+        else:
+            ctypes.cdll.LoadLibrary('libdl.so').dlclose(self._cdll._handle)
+        os.remove(self._path)
+        
+        
+
+
+# c and python interface.
+c_to_py ={
+    'int'       : ctypes.c_int,
+    'int&'      : ctypes.c_int,
+    'float'     : ctypes.c_float,
+    'float&'    : ctypes.c_float,
+    'double'    : ctypes.c_double,
+    'bool'      : ctypes.c_bool,
+
+    'float*'    : np.ctypeslib.ndpointer(dtype=np.float32),
+    'char*'     : np.ctypeslib.ndpointer(dtype=np.int8),
+    'int*'      : np.ctypeslib.ndpointer(dtype=np.int32),
+    'double*'   : np.ctypeslib.ndpointer(dtype=np.float64),
+
+    'int**'     : np.ctypeslib.ndpointer(dtype=np.float64, ndim=2),
+    'void'      : None
+}
+
+
+def c_import(c_ext):
+    """Load library from C_extensions.
+
+    Args:
+        c_ext (str): path of target library.
+
+    Raises:
+        OSError: if current OS is not support "CDLL".
+
+    Returns:
+        `CDLL`: CDLL object by `ctypes`.
+    """
+    if platform.system() == 'Windows':
+        _cdll = ctypes.windll.LoadLibrary(pkg_resources.resource_filename(__name__,f"{c_ext}.dll"))
+    elif platform.system() == 'Linux':
+        _cdll = ctypes.cdll.LoadLibrary(pkg_resources.resource_filename(__name__,f"{c_ext}.so.1"))
+    else:
+        raise OSError("this OS is not supported.")
+    return _cdll
+
+
+def cdll_types(header):
+    ans = {}
+    for line in header:
+        if line.lstrip():
+            if len(line.split("("))<2: continue
+            func_name = line.split("(")[0].split()[-2:]
+            #print(func_name)
+            restype     = (func_name[0])
+            name        = func_name[1]
+            func_args   = line.split("(")[1].split(")")[0].split(",")
+            argtypes    = []
+            argnames    = []
+            for func_arg in func_args:
+                args = func_arg.split()
+                if args[1][0] == "*" or args[1][0] == "&":
+                    argtypes.append(args[0]+args[1][0])
+                    argnames.append(args[1][1:])
+                else:
+                    argtypes.append(args[0])
+                    argnames.append(args[1])
+
+            ans[name] = (argtypes, argnames, restype)
+    return ans
+
+def cdefs_analyzer(line):
+    if line.lstrip():
+        if len(line.split("("))<2: 
+            return (None, None)
+        func_name = line.split("(")[-2].split()[-2:]
+        #print(func_name)
+        restype     = (func_name[0])
+        name        = func_name[1]
+        func_args   = line.split("(")[-1].split(")")[0].split(",")
+        argtypes    = []
+        argnames    = []
+        for func_arg in func_args:
+            args = func_arg.split()
+            if len(args) == 1:
+                argtypes.append(args[0])
+                continue
+            if args[1][0] == "*" or args[1][0] == "&":
+                argtypes.append(args[0]+args[1][0])
+                argnames.append(args[1][1:])
+            else:
+                argtypes.append(args[0])
+                argnames.append(args[1])
+
+        return name, (argtypes, argnames, restype)
+    else:
+        return (None, None)
+
+def c_interface(_cdll, func_name, argtypes, restype = None):
+    func = eval(f'_cdll.{func_name}')
+    func.argtypes = argtypes
+    if restype is not None:
+        func.restype = restype
+
+def interface_from_header(cdll, header, py_dict, include = None, exclude = None):
+    cdll.header = header
+    c_funcs = cdll_types(header)
+    if exclude is None:
+        exclude = []
+    for f_name in c_funcs:
+        if f_name in exclude: continue
+        if include is not None and not f_name in include: continue
+        args, anames,  res = c_funcs[f_name]
+        args = [py_dict[arg] for arg in args]
+        res  = py_dict[res]
+        c_interface(cdll, f_name, args, res)
+
+def function_make(cdll, fname, argtypes, args, restype):
+    argstring =[]
+    for a,t in zip(args, argtypes):
+        if t[-2:] == '**':
+            argstring.append(f"{a}: np.ndarray")
+        elif t[-1] == '*':
+            argstring.append(f"{a}: np.ndarray")
+        elif t[-1] == '&':
+            argstring.append(f"{a}: {t[:-1]}")
+        elif t == "double":
+            argstring.append(f"{a}: float")
+        else:
+            argstring.append(f"{a}:{t}")
+    argstring = ','.join(argstring)
+    restype = None if restype =='void' else restype
+    arg = ",".join(args)
+    convert = ""
+    for name, types in zip(args, argtypes):
+        if hasattr(c_to_py[types],"_dtype_"):
+            convert+=f"\t\tif not isinstance({name}, np.ndarray):\n"
+            convert+=f"\t\t\t{name}=np.array({name}, dtype=np.{c_to_py[types]._dtype_})\n"
+            # TODO : dtype conversion
+    
+    pdef = f"def functions(cdll):\n"
+    pdef += f"\tdef {fname}({argstring})-> {restype}:\n"
+    if convert:
+        pdef += convert
+    #pdef += f"\t\tprint(c, a, b, n)\n"
+    
+    if restype:
+        pdef += f"\t\treturn cdll.{fname}({arg})\n"
+    else:
+        pdef += f"\t\tcdll.{fname}({arg})\n"
+    pdef += f"\treturn {fname}"
+    #print(pdef)
+    exec(pdef)
+    return locals()['functions'](cdll)
+
+
+def function_def_check(file):
+    doc = ""
+    line = file.readline()
+    funcdef = ""
+    ##docstring processing
+    if line[:3] == "//!":
+        while line[:3] == "//!":
+            doc += line[3:]
+            line = file.readline()
+    while not "(" in line:
+        line = file.readline()
+    ##function def processing
+    if "(" in line:
+        while not ")" in line:
+            funcdef+= line[:-1]
+            line = file.readline()
+        funcdef+= line[:-1]
+    return doc, funcdef
+
+
+
+def from_C_source(filename, *flags, debug = False, encoding = 'utf8'):
+    tempname = "__temp__"+os.path.basename(filename)
+    libname = os.path.splitext(os.path.basename(filename))[0]
+
+    cpp = not (os.path.splitext(filename)[1].lower() == "c")
+
+    #analyze original C source
+    with  open(filename, encoding=encoding) as cppsource:
+        header = []
+        functions = []
+        docs = []
+        header_line = -1
+        defs = False
+        defse = False
+        
+        for i, line in enumerate(cppsource):
+            if line[:16] == "//@extern_python":
+                header_line = i
+            if line[:13] == "//@python_def":
+                doc, funcdef  = function_def_check(cppsource)
+                docs.append(doc)
+                functions.append(")".join(funcdef.split(")")[:-1])+");\r\n")
+            if line[:13] == "//@python_var":
+                functions.append(cppsource.readline())
+        if header_line == -1:
+            raise SyntaxError("Cannot find '//@extern_python' from source.")
+        """if defs:
+            if not defse:
+                raise SyntaxError("Cannot find '//@python_defs_end' from source.")"""
+    
+    func_dict = {}
+    doc_dict = {}
+    if debug:
+        print("C functions found from source : ")
+    for docstring, func in zip(docs, functions):
+        name, types = cdefs_analyzer(func)
+        func_dict[name] = types
+        doc_dict[name] = docstring
+        if debug:
+            print(f"\t{name}")
+        
+
+    #make new C source for python 
+    with open(tempname,"w") as cpp_source:
+        with open(filename, encoding=encoding) as cppsource:
+            for i,line in enumerate(cppsource):
+                if i<header_line:
+                    func_name, _ = cdefs_analyzer(line)
+                    if func_name in func_dict:
+                        continue
+                    else:
+                        cpp_source.write(line)
+                elif i == header_line:
+                    if cpp:
+                        cpp_source.write('extern "C"{\r\n')
+                    for cdefs in functions:
+                        if platform.system() == 'Windows':
+                            cpp_source.write("__declspec(dllexport) "+cdefs)
+                        else:
+                            cpp_source.write(cdefs)
+                    if cpp:
+                        cpp_source.write('};\r\n')
+                        
+                    cpp_source.write(line)
+                else:
+                    cpp_source.write(line)
+    
+        
+    c_line = f'{CPC} -o __lib{libname}.{outext} {tempname} ' if cpp else f'{CC} -o __libC.{outext} {tempname}'
+    c_line += " ".join(FLAG) + " " + " ".join(flags)
+
+    #compile
+    print(f"Compile : {c_line}")
+
+    compile_result = subprocess.run(c_line.split(), capture_output=True)
+    if  compile_result.returncode != 0:
+        try:
+            print(compile_result.stderr.decode())
+        except UnicodeDecodeError:
+            print(compile_result.stderr.decode('euckr'))
+        raise SyntaxError("Compilation failed. see the compiler error output for details.")
+        
+    
+    if not debug:
+        os.remove(tempname)
+        if platform.system() == "Windows":
+            os.remove(libname+".lib")
+            os.remove(libname+".exp")
+
+    #loadLibrary
+    
+    if doc_dict:
+        dll = C_functions(f"./__lib{libname}.{outext}", functions, doc_dict)
+    else:
+        dll = C_functions(f"./__lib{libname}.{outext}", functions)
+    dll.source = ""
+    with open(filename, encoding=encoding) as f:
+        for line in f:
+            dll.source += line
+        
+    return dll
+    
+
+
+def internal_Library(module_name):
+    lib_path = os.path.join(os.path.abspath(__name__).split(".")[0],'lib')
+    src_path = os.path.join(lib_path, 'src')
+
+
+    if os.path.isfile(os.path.join(lib_path, f'{module_name}.{outext}')):
+        return ctypes.CDLL(os.path.join(lib_path, f'{module_name}.{outext}'))
+    else:
+        for srcs in os.listdir(src_path):
+            if os.path.splitext(os.path.basename(srcs))[0] == module_name:
+                cpp = False if os.path.splitext(os.path.basename(srcs))[1] == 'c' else True
+                outpath = os.path.join(lib_path, f'{module_name}.{outext}')
+                c_line = f'{CPC} -o {outpath} {os.path.join(src_path,srcs)} ' if cpp else f'{CC} -o {outpath} {os.path.join(src_path,srcs)} '
+                c_line += " ".join(FLAG)
+                c_line += " -O2"
+
+                #compile
+                print(f"Compile : {c_line}")
+                compile_result = subprocess.run(c_line.split(), capture_output=True)
+                if  compile_result.returncode != 0:
+                    try:
+                        print(compile_result.stderr.decode())
+                    except UnicodeDecodeError:
+                        print(compile_result.stderr.decode('euckr'))
+                    raise SyntaxError("Compilation failed. see the compiler error output for details.")
+                return ctypes.CDLL(os.path.join(lib_path, f'{module_name}.{outext}'))
+
+        raise ModuleNotFoundError()
+    
+    
+        
+    
+
+    

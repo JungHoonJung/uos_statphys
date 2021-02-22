@@ -6,6 +6,7 @@ mm.requireAs('ctypes', 'os','gc', np = 'numpy', plt = 'matplotlib.pyplot', globs
 import ctypes, os, gc
 import numpy as np
 import matplotlib.pyplot as plt
+from .C_ext import internal_Library
 
 class IsingModelSingle:
     '''class for 2D square lattice ising model simulator (only one size).
@@ -18,7 +19,7 @@ class IsingModelSingle:
     algorithm : `str`
         specifying Monte Carlo algorithm. 'wolff' and 'metropolis' can be captured. Default is 'metropolis'
     '''
-    _cdll = ctypes.windll.LoadLibrary('../../source/repos/Isingmonte/x64/Release/Isingmonte.dll')
+    _cdll = internal_Library('isingmonte')
     metropolis = _cdll.monteCarlo
     metropolis.argtypes = [np.ctypeslib.ndpointer(dtype=np.int32),
                  np.ctypeslib.ndpointer(dtype=np.int32),

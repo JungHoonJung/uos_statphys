@@ -47,6 +47,7 @@ void theta_input_queue(double position_x[], double position_y[], double theta[],
 	}
 }
 
+//#topython
 void update_theta(double position_x[], double position_y[], double theta[], 
 						vector<double> lattice_x[][L / R], vector<double> lattice_y[][L / R],
 						vector<double> lattice_theta[][L / R], double eta) {
