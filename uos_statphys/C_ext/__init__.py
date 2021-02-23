@@ -1,4 +1,4 @@
-import platform, os, ctypes, pkg_resources
+import platform, os, ctypes, pkg_resources, sys
 import subprocess
 import numpy as np
 
@@ -309,8 +309,8 @@ def compile(filename, outputname, *flags, compiler=None, cpp = False, message= T
     #compile
     if message:
         print(f"Compile : {c_line}")
-
-    compile_result = subprocess.run(c_line.split(), capture_output=True)
+    
+    compile_result = subprocess.run(c_line.split(), stderr=subprocess.PIPE)
     if  compile_result.returncode != 0:
         try:
             print(compile_result.stderr.decode())
@@ -409,8 +409,8 @@ def internal_Library(module_name):
         for srcs in os.listdir(src_path):
             if os.path.splitext(os.path.basename(srcs))[0] == module_name:  # same distribution
                 _,_,cpp = precompile(os.path.join(src_path, srcs), f"__temp__{srcs}")
-                compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2", "-std=c++14",
-                f"-I{src_path}", cpp = cpp)
+                compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2", "-std=c++11",
+                f"-I{src_path}", *FLAG, cpp = cpp)
                 os.remove(f"__temp__{srcs}")
                 return ctypes.CDLL(pkg_resources.resource_filename("uos_statphys",os.path.join("lib",f"{module_name}.{outext}")))
         raise ModuleNotFoundError()
