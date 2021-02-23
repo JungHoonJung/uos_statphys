@@ -40,6 +40,12 @@ int dot_product(int* a, int* b, int n){
 
 //@python_def
 //!Get n-th fibonacci series.
+//! Parameters
+//! -----------
+//! result : nd.array
+//!    the array will be filled with fibonacci series by this function.
+//! n : int
+//!    the length of array
 void fibonacci_array(
     int* result, 
     int n
