@@ -5,7 +5,7 @@ from uos_statphys import __version__
 setup(name='uos_statphys',
 		version = __version__,
 		description='Python library for statistical physics lab of University of Seoul.',
-		author='Junghoon Jung',
+		author='Jung-Hoon Jung',
 		author_email='jh.jung@uos.ac.kr',
 		packages=find_packages(),      
 		include_package_data=True,      # include files in MANIFEST.in

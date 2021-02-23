@@ -73,7 +73,6 @@ c_to_py ={
     'long*'      : np.ctypeslib.ndpointer(dtype=np.int64),
     'double*'   : np.ctypeslib.ndpointer(dtype=np.float64),
 
-    'int**'     : np.ctypeslib.ndpointer(dtype=np.float64, ndim=2),
     'void'      : None
 }
 
@@ -363,7 +362,7 @@ def compile_option_parser(filename, encoding = "utf8"):
 
 
 
-def from_C_source(filename, *flags, debug = False, encoding = 'utf8', output= None):
+def from_C_source(filename, *flags, debug = False, encoding = 'utf8', compiler= None):
     tempname = "__temp__"+os.path.basename(filename)
     libname = os.path.splitext(os.path.basename(filename))[0]
 
@@ -409,8 +408,12 @@ def internal_Library(module_name):
         for srcs in os.listdir(src_path):
             if os.path.splitext(os.path.basename(srcs))[0] == module_name:  # same distribution
                 _,_,cpp = precompile(os.path.join(src_path, srcs), f"__temp__{srcs}")
-                compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2", "-std=c++11",
-                f"-I{src_path}", *FLAG, cpp = cpp)
+                if platform.system() == "Windows":
+                    compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2", "-std=c++14",
+                        f"-I{src_path}", *FLAG, cpp = cpp)
+                else:
+                    compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2", "-std=c++11",
+                        f"-I{src_path}", *FLAG, cpp = cpp)
                 os.remove(f"__temp__{srcs}")
                 return ctypes.CDLL(pkg_resources.resource_filename("uos_statphys",os.path.join("lib",f"{module_name}.{outext}")))
         raise ModuleNotFoundError()

@@ -197,7 +197,7 @@ void monteCarlo(int* energy, int* mag, double temp, int ens_num, int L, int rela
     //return은 없음. 결과값은 numpy array에 저장됨.
 }
 
-//@python_def
+
 void MCwolff(char* conf, int** nn, double threshold, int index, int& E, int& M, int L, double temp) {
     int* cluster = new int[L * L];
     int* cluster_ind = new int[L * L]{ 1, };
@@ -256,7 +256,6 @@ void MCwolff(char* conf, int** nn, double threshold, int index, int& E, int& M, 
 //계산 결과는 numpy array 하나에 저장하기때문에 single thread에서 범위를 잘 조정하지 않으면
 // 같은 곳에 계산 결과 덮어 쓰일수 있음.
 // time_min, time_max = 저장할 곳의 인덱스의 시작점과 끝점.
-//@python_def
 void single_wolff(int* energy, int* mag, int** nn_, double temp, int L, int relax, int time_min, int time_max) {
     //random init 1 or -1
     int timestamp = time_min;
@@ -341,7 +340,6 @@ void single_wolff(int* energy, int* mag, int** nn_, double temp, int L, int rela
 // energy, mag : python에서의 실제 numpy array, 주의할점은 1차원 배열로 만들어서 넘겨줘야함.
 // 즉 2d 이면 grid 나눌때와 비슷하게 1차원 배열로 만들고 index//L , index%L 꼴이라고 생각하고 코드 작성.
 // etc. 나머지 컨트롤 파라미터 (계산에 쓰일 값).
-//@python_def
 void thread_wolff(int* energy, int* mag, int** nn_, double temp, int ens_num, int L, int relax, int time, int thr_index) {
     int start_point = thr_index * ens_num * time;
     int** nn = new int* [L * L];
