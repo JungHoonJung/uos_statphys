@@ -9,6 +9,6 @@ setup(name='uos_statphys',
 		author_email='jh.jung@uos.ac.kr',
 		packages=find_packages(),      
 		include_package_data=True,      # include files in MANIFEST.in
-		python_requires = '>=3',
+		python_requires = '>=3.7',
 		install_requires=['numpy', 'matplotlib','tqdm', 'clang']
 	 )

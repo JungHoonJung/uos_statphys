@@ -3,4 +3,4 @@ include LICENSE
 include requirements.txt
 
 include uos_statphys/lib/src/*
-include uos_statphys/lib/*
+include uos_statphys/lib/

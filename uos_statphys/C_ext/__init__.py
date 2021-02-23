@@ -87,12 +87,7 @@ def c_import(c_ext):
     Returns:
         `CDLL`: CDLL object by `ctypes`.
     """
-    if platform.system() == 'Windows':
-        _cdll = ctypes.windll.LoadLibrary(pkg_resources.resource_filename(__name__,f"{c_ext}.dll"))
-    elif platform.system() == 'Linux':
-        _cdll = ctypes.cdll.LoadLibrary(pkg_resources.resource_filename(__name__,f"{c_ext}.so.1"))
-    else:
-        raise OSError("this OS is not supported.")
+    _cdll = ctypes.CDLL(pkg_resources.resource_filename("uos_statphys",os.path.join("lib",f"{c_ext}.{outext}")))
     return _cdll
 
 
@@ -225,14 +220,8 @@ def function_def_check(file):
     return doc, funcdef
 
 
-
-def from_C_source(filename, *flags, debug = False, encoding = 'utf8'):
-    tempname = "__temp__"+os.path.basename(filename)
-    libname = os.path.splitext(os.path.basename(filename))[0]
-
+def precompile(filename, tempname, encoding = 'utf8', debug = False):
     cpp = not (os.path.splitext(filename)[1].lower() == "c")
-
-    #analyze original C source
     with  open(filename, encoding=encoding) as cppsource:
         header = []
         functions = []
@@ -292,9 +281,10 @@ def from_C_source(filename, *flags, debug = False, encoding = 'utf8'):
                     cpp_source.write(line)
                 else:
                     cpp_source.write(line)
-    
-        
-    c_line = f'{CPC} -o __lib{libname}.{outext} {tempname} ' if cpp else f'{CC} -o __libC.{outext} {tempname}'
+    return functions, doc_dict, cpp
+
+def compile(filename, outputname, *flags, cpp = False, remove = False):
+    c_line = f'{CPC} -o {outputname} {filename} ' if cpp else f'{CC} -o {outputname} {filename}'
     c_line += " ".join(FLAG) + " " + " ".join(flags)
 
     #compile
@@ -309,11 +299,19 @@ def from_C_source(filename, *flags, debug = False, encoding = 'utf8'):
         raise SyntaxError("Compilation failed. see the compiler error output for details.")
         
     
-    if not debug:
-        os.remove(tempname)
+    if remove:
+        os.remove(filename)
+
+
+def from_C_source(filename, *flags, debug = False, encoding = 'utf8', output= None):
+    tempname = "__temp__"+os.path.basename(filename)
+    libname = os.path.splitext(os.path.basename(filename))[0]
+
+    functions, doc_dict, cpp = precompile(filename, tempname, encoding, debug)
+    
+    compile(tempname, f"__lib{libname}.{outext}", *flags, cpp=cpp, remove = False if debug else True)
 
     #loadLibrary
-    
     if doc_dict:
         dll = C_functions(f"./__lib{libname}.{outext}", functions, doc_dict)
     else:
@@ -328,34 +326,19 @@ def from_C_source(filename, *flags, debug = False, encoding = 'utf8'):
 
 
 def internal_Library(module_name):
-    lib_path = os.path.join(os.path.abspath(__name__).split(".")[0],'lib')
-    src_path = os.path.join(lib_path, 'src')
-
-
-    if os.path.isfile(os.path.join(lib_path, f'{module_name}.{outext}')):
-        return ctypes.CDLL(os.path.join(lib_path, f'{module_name}.{outext}'))
-    else:
+    lib_path = pkg_resources.resource_filename("uos_statphys", "lib")
+    src_path = pkg_resources.resource_filename("uos_statphys", os.path.join("lib",'src'))
+    try:
+        _cdll = ctypes.CDLL(pkg_resources.resource_filename("uos_statphys",os.path.join("lib",f"{module_name}.{outext}")))
+        return _cdll
+    except:
         for srcs in os.listdir(src_path):
-            if os.path.splitext(os.path.basename(srcs))[0] == module_name:
-                cpp = False if os.path.splitext(os.path.basename(srcs))[1] == 'c' else True
-                outpath = os.path.join(lib_path, f'{module_name}.{outext}')
-                c_line = f'{CPC} -o {outpath} {os.path.join(src_path,srcs)} ' if cpp else f'{CC} -o {outpath} {os.path.join(src_path,srcs)} '
-                c_line += " ".join(FLAG)
-                c_line += " -O2"
-
-                #compile
-                print(f"Compile : {c_line}")
-                compile_result = subprocess.run(c_line.split(), capture_output=True)
-                if  compile_result.returncode != 0:
-                    try:
-                        print(compile_result.stderr.decode())
-                    except UnicodeDecodeError:
-                        print(compile_result.stderr.decode('euckr'))
-                    raise SyntaxError("Compilation failed. see the compiler error output for details.")
-                return ctypes.CDLL(os.path.join(lib_path, f'{module_name}.{outext}'))
-
+            if os.path.splitext(os.path.basename(srcs))[0] == module_name:  # same distribution
+                _,_,cpp = precompile(os.path.join(src_path, srcs), f"__temp__{srcs}")
+                compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2",
+                f"-I{src_path}", cpp = cpp, remove = True)
+                return ctypes.CDLL(pkg_resources.resource_filename("uos_statphys",os.path.join("lib",f"{module_name}.{outext}")))
         raise ModuleNotFoundError()
-    
     
         
     
