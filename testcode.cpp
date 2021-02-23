@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <iostream>
 #include <vector>
-
+//$g++ -std=c++14 -o test.out testcode.cpp -Wall
 
 int add(int, int);
 void array_add(int*, int*, int*, int);
@@ -59,4 +59,9 @@ void fibonacci_array(
             result[i] = 1;
         }
     }
+}
+
+int main(){
+    cout<<"Hello world!"<<endl;
+    return 0;
 }

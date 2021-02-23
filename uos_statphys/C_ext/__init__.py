@@ -12,12 +12,15 @@ if platform.system() == 'Windows':
     outext = "dll"    
     
 else:
-    CC = "gcc"
-    CPC = "g++"
     FLAG.append("-fPIC")
     if platform.system() == 'Linux':
+        CC = "gcc"
+        CPC = "g++"
         outext = "so"
     else:
+        CC = "clang"
+        CPC = "clang++"
+        FLAG.append("-dynamic")
         outext = "dylib"
 
 def set_compiler(c = None, cpp = None):
@@ -241,10 +244,7 @@ def precompile(filename, tempname, encoding = 'utf8', debug = False):
                 functions.append(cppsource.readline())
         if header_line == -1:
             raise SyntaxError("Cannot find '//@extern_python' from source.")
-        """if defs:
-            if not defse:
-                raise SyntaxError("Cannot find '//@python_defs_end' from source.")"""
-    
+
     func_dict = {}
     doc_dict = {}
     if debug:
@@ -283,12 +283,32 @@ def precompile(filename, tempname, encoding = 'utf8', debug = False):
                     cpp_source.write(line)
     return functions, doc_dict, cpp
 
-def compile(filename, outputname, *flags, cpp = False, remove = False):
-    c_line = f'{CPC} -o {outputname} {filename} ' if cpp else f'{CC} -o {outputname} {filename}'
-    c_line += " ".join(FLAG) + " " + " ".join(flags)
+def compile(filename, outputname, *flags, compiler=None, cpp = False, message= True):
+    """compile give C(C++) code with option in flags.
+    Parameters
+    -----------
+    filename : str
+        path of target file.
+    outputname : str
+        path of output file
+    flags : 
+        the options for compiler
+    compiler :  str
+        compile with specified compiler
+    cpp : bool
+        the language of source code
+    message : bool
+        if True, the compile command line will be printed.
+    """
+    if compiler is not None:
+        c_line = f'{compiler} -o {outputname} {filename} '
+    else:
+        c_line = f'{CPC} -o {outputname} {filename} ' if cpp else f'{CC} -o {outputname} {filename} '
+    c_line += " ".join(flags)
 
     #compile
-    print(f"Compile : {c_line}")
+    if message:
+        print(f"Compile : {c_line}")
 
     compile_result = subprocess.run(c_line.split(), capture_output=True)
     if  compile_result.returncode != 0:
@@ -299,8 +319,48 @@ def compile(filename, outputname, *flags, cpp = False, remove = False):
         raise SyntaxError("Compilation failed. see the compiler error output for details.")
         
     
-    if remove:
-        os.remove(filename)
+    
+
+def compile_option_parser(filename, encoding = "utf8"):
+    """from source_code, reading out the compilation options and compiler."""
+    compiler, flags = None, []
+    output = False
+    read = False
+    with open(filename,'r', encoding=encoding) as f:
+        for line in f:
+            if line[:3] == "//$":
+                if not read:
+                    read = True
+                else:
+                    print("Compilation parsing failed. //$ line will be ignored.")
+                    return None, []
+                cline = line[3:].rstrip().split()
+                for i, term in enumerate(cline):
+                    if i == 0:
+                        compiler = term
+                        continue
+                    
+                    elif output:
+                        output = False
+                        continue
+                    elif term == "-o":
+                        output = True
+                        continue
+                    elif filename in term:
+                        continue
+                    else:
+                        flags.append(term)
+            
+
+
+    if compiler is not None:
+        compile(filename, "./__temp__test__source.test", *flags, compiler=compiler, message=False)
+        os.remove("./__temp__test__source.test")
+
+    return compiler, flags
+
+
+
 
 
 def from_C_source(filename, *flags, debug = False, encoding = 'utf8', output= None):
@@ -309,13 +369,27 @@ def from_C_source(filename, *flags, debug = False, encoding = 'utf8', output= No
 
     functions, doc_dict, cpp = precompile(filename, tempname, encoding, debug)
     
-    compile(tempname, f"__lib{libname}.{outext}", *flags, cpp=cpp, remove = False if debug else True)
+    compiler, flag = compile_option_parser(filename, encoding)
+    if compiler is None:
+        c_opt = [i for i in flags]
+    else:
+        c_opt = [i for i in flag]
+        for opt in flag:
+            if not opt in c_opt:
+                c_opt.append(opt)
+    for opt in FLAG:
+        if not opt in c_opt:
+            c_opt.append(opt)
+
+    compile(tempname, f"lib{libname}.{outext}", *c_opt, compiler=compiler, cpp= cpp)    
+    if not debug:
+        os.remove(tempname)
 
     #loadLibrary
     if doc_dict:
-        dll = C_functions(f"./__lib{libname}.{outext}", functions, doc_dict)
+        dll = C_functions(f"./lib{libname}.{outext}", functions, doc_dict)
     else:
-        dll = C_functions(f"./__lib{libname}.{outext}", functions)
+        dll = C_functions(f"./lib{libname}.{outext}", functions)
     dll.source = ""
     with open(filename, encoding=encoding) as f:
         for line in f:
@@ -335,8 +409,9 @@ def internal_Library(module_name):
         for srcs in os.listdir(src_path):
             if os.path.splitext(os.path.basename(srcs))[0] == module_name:  # same distribution
                 _,_,cpp = precompile(os.path.join(src_path, srcs), f"__temp__{srcs}")
-                compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2",
-                f"-I{src_path}", cpp = cpp, remove = True)
+                compile(f"__temp__{srcs}", os.path.join(lib_path,module_name)+f".{outext}", "-O2", "-std=c++14",
+                f"-I{src_path}", cpp = cpp)
+                os.remove(f"__temp__{srcs}")
                 return ctypes.CDLL(pkg_resources.resource_filename("uos_statphys",os.path.join("lib",f"{module_name}.{outext}")))
         raise ModuleNotFoundError()
     
